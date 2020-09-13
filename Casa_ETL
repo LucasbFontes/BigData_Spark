@@ -1,0 +1,125 @@
+ 
+from pyspark.sql import *
+from pyspark.sql import functions as F
+from pyspark.sql import types as T
+from pyspark.sql.functions import col
+from functools import reduce
+import time
+from datetime import datetime, timedelta
+import pandas as pd
+import requests
+
+# File location and type
+file_location = "/FileStore/tables/HomeC.csv"
+file_type = "csv"
+
+# CSV options
+infer_schema = "false"
+first_row_is_header = "false"
+delimiter = ","
+
+# The applied options are for CSV files. For other file types, these will be ignored.
+user_log = spark.read.format(file_type) \
+  .option("inferSchema", infer_schema) \
+  .option("header", "True") \
+  .option("sep", delimiter) \
+  .load(file_location)
+
+## Criando sessão do spark
+spark = SparkSession \
+        .builder \
+        .appName("Wrangling Data") \
+        .getOrCreate()
+
+## Fazendo cast na coluna "time" 
+user_log = user_log.withColumn('time', F.from_unixtime(user_log.time).cast(T.TimestampType()))
+
+## A coluna time, após o cast, fica com formato "yyyy-dd-mm hh:mm:ss" nas funções seguintes vamos tratar esses dados.
+split_column = F.split(user_log["time"], ':')
+user_log = user_log.withColumn('Hour', split_column.getItem(0))
+user_log = user_log.withColumn('Minute', split_column.getItem(1))
+user_log = user_log.withColumn('Second', split_column.getItem(2))
+
+## Filtrando os dados para mostrá-los a cada minuto
+user_log1 = user_log.where("Second = 00")
+
+## Dropando as colunas de Hora, Minuto e Segundo
+user_log1 = user_log1.drop("Hour", "Minute", "Second")
+
+## Tratando os dados da coluna time, mas agora olhando para o formato da data
+split_column = F.split(user_log1["time"], ' ')
+user_log1 = user_log1.withColumn('Date', split_column.getItem(0))
+user_log1 = user_log1.withColumn('Hour', split_column.getItem(1))
+
+## Dropando a coluna Time
+user_log1 = user_log1.drop("time")
+
+## Separando a coluna Date
+split_column = F.split(user_log1["Date"], '-')
+user_log1 = user_log1.withColumn('Ano', split_column.getItem(0))
+user_log1 = user_log1.withColumn('Mês', split_column.getItem(1))
+user_log1 = user_log1.withColumn('Dia', split_column.getItem(2))
+
+## Filtrando os dados para pegar apenas o primeiro dia
+user_log1.select("Ano", "Mês", "Dia")
+user_log1 = user_log1.where("Dia = 01")
+user_log1 = user_log1.drop("Ano", "Mês", "Dia")
+
+
+user_log1 = user_log1.withColumn('SumFurnace', (col("Furnace 1 [kW]") + col("Furnace 2 [kW]")))
+user_log1 = user_log1.withColumn('SumKitchen', (col("Kitchen 12 [kW]") + col("Kitchen 14 [kW]") + col('Kitchen 38 [kW]')))
+
+
+## Renomeando as colunas
+oldColumns = user_log1.schema.names
+newColumns = ["Use", "Gen","House Overall", "Dishwasher", "Furnace 1", "Furnace 2", "Home office", "Fridge", "Wine Cellar", "Garage Door", "Kitchen 12",               "Kitchen 14", "Kitchen 38", "Barn", "Well", "Microwave", "Living Room", "Solar", "Temperature", "Icon", "Humidity", "Visibility",                       "Summary", "Apparent Temperature","Pressure", "Wind Speed", "Cloud Cover", "Wind Bearing", "Precip Intensity", "Dew Point", "Precip Probability", "Date", "Hour", "Furnace Sum", "Kitchen Sum"]
+
+user_log1 = reduce(lambda user_log1, idx: user_log1.withColumnRenamed(oldColumns[idx], newColumns[idx]), range(len(oldColumns)), user_log1)
+
+# As colunas "Summary" e "Icon" não são numéricas, portanto vou retirá-las
+columns_to_drop = ["Summary", "Icon"]
+user_log1 = user_log1.drop(*columns_to_drop)
+
+columns = ["Use", "Gen","House Overall", "Dishwasher", "Furnace 1", "Furnace 2", "Home office", "Fridge", "Wine Cellar", "Garage Door", "Kitchen 12",              "Kitchen 14", "Kitchen 38", "Barn", "Well", "Microwave", "Living Room", "Solar", "Temperature", "Humidity", "Visibility",                                "Apparent Temperature","Pressure", "Wind Speed", "Cloud Cover", "Wind Bearing", "Precip Intensity", "Dew Point", "Precip Probability",                  "Date", "Hour", "Furnace Sum", "Kitchen Sum"]
+
+
+# A coluna "CloudCover" usa dados numérico, no entanto algumas linhas apresentam valores como "cloudCover", a ideia então é tirar essas valores
+user_log1 = user_log1.withColumn('Cloud Cover', F.when(user_log1["Cloud Cover"] == "cloudCover", "0").otherwise(user_log1["Cloud Cover"]))
+
+#Convertendo a tabela para dataframe do pandas
+dados = user_log1.select(columns).toPandas()
+# Loop for para alterar cada valor da coluna "Hour" e deixá-lo num formato que atenda aos critérios de input da API do Power BI
+
+horaAtual = datetime.now()
+
+print(str(horaAtual))
+#for index, row in dados.iterrows():
+for row in dados.index:
+  #print(str(row))
+  dados.at[row,'Hour'] = horaAtual.strftime("%Y-%m-%dT%H:%M:%S%Z")
+  horaAtual = horaAtual+timedelta(seconds=1)
+
+  
+for c in user_log1.columns:
+  user_log1 = user_log1.withColumnRenamed(c, c.replace(" ", ""))
+  
+user_log1.write.mode("overwrite").option("header", "true").save("dbfs:/FileStore/Casa/casa.csv")
+
+
+## Fazendo a conexão com o Power BI
+
+REST_API_URL = 'https://api.powerbi.com/beta/a1367d4c-7379-48a6-8680-d962ed9a9b76/datasets/a165a0ca-3edc-4ff1-a0d8-30400a9e1e35/rowskey=poi6Ao92r5lrPlPfF8vqu1p1H0kSZgRvvQ%2BUFUrKbShuZKqw23AOYwNurUMKtFhriIdin4NQKishF8TIBetMXA%3D%3D'
+print("Entrando no for")
+for index, row in dados.iterrows():
+  data_raw = []
+  print(data_raw)
+  data_raw.append(row)
+  data_df = pd.DataFrame(data_raw)
+  print(data_df)
+  data_json = bytes(data_df.to_json(orient='records'), encoding='utf-8')
+  print(data_json)
+
+  # Post the data on the Power BI API
+  req = requests.post(REST_API_URL, data_json)
+
+  time.sleep(2)
