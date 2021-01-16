@@ -37,4 +37,4 @@ The final result was a dashboard that looked like this
 ![dashboard](https://user-images.githubusercontent.com/68716835/104823479-1427fb00-5829-11eb-85db-1063c4844096.PNG)
 
 
-This is just a snippet, but it's possible to see the chart taking form as the data flows. 
+This is just a snippet, but it's possible to see the chart taking form as the data flows. The card show the consumption of the device at the current time, and the line chart shows the historical consumption.
