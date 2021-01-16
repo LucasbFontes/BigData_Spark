@@ -21,14 +21,17 @@ keys to make big data an A-thing at your company. The 5V's are resumed below:
 ## Technologies 
 
 Since we have to create an ETL tool and was suggested to create a graphic interface, I choose to clean the data and show it on [Power BI](https://powerbi.microsoft.com/en-us/desktop/) (you might have guest this due the title and the word "monitor").
-Also, I had to clean the data before transmiting it to the Microsoft Tool, to do that I used [databricks](https://databricks.com/) which is a [Jupyter Notebook](https://jupyter.org/) that works on the cloud, this fact helps you if 
-you're working with a teammate. Moreover, PowerBI has an API which will help connect the cleaned data and show it as a report.
-
-To clean the data I use [Pyspark](https://spark.apache.org/docs/latest/api/python/index.html), 
-
+Also, I had to clean the data before transmiting it to the Microsoft Tool, to do that I used [databricks](https://databricks.com/) which is a [Jupyter Notebook](https://jupyter.org/) that works on the cloud, this fact helps you if you're working with a teammate. Moreover, PowerBI has an API which will help connect the cleaned data and show it as a report. To clean the data I use [Pyspark](https://spark.apache.org/docs/latest/api/python/index.html), focused on the SparkSQL which helped me clean the data as if it was a SQL querie 
 
 ## The project
 
+As I said in the beginning of the text, this project was made as an assignment to a class that I attended. So, the point here was to create an ETL project and show it as a web interface. I choose to work with IoT data, since it's a great source for huge amount of data and it needs to be consumed fast(therefore fulfilling 2 of the 5V's of Big Data: volume and velocity). Unfortunately I did not have IoT sensors at my house, so I search for datasets on [Kaggle](https://www.kaggle.com/) and found one with data enough to be used on this project. 
+
+One challenge here was to connect Power BI with my databricks code, and to do that I used Power BI API. I had to generate a URL that connect to the dashboard, and passed each data as a json(since this the format accepted by the program), to simulate the streaming happening I sent one row at a time.  
 
 
 ## Results
+
+The final result was a dashboard that looked like this
+
+![image](/images/dashboard.PNG)
